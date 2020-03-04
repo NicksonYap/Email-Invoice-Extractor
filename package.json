@@ -1,0 +1,19 @@
+{
+  "name": "email-invoice-extractor",
+  "version": "1.0.0",
+  "description": "Extracts Invoices and Receipts from email inbox",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NicksonYap/Email-Invoice-Extractor.git"
+  },
+  "author": "Nickson Yap",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/NicksonYap/Email-Invoice-Extractor/issues"
+  },
+  "homepage": "https://github.com/NicksonYap/Email-Invoice-Extractor#readme"
+}
