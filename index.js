@@ -154,17 +154,6 @@ const csv = require('fast-csv');
     });
   }
 
-  list('messages', {
-    userId: 'me',
-    q: 'Your MyCar Receipt',
-  })
-    .then(messages => {
-      console.log(messages.length);
-    })
-    .catch(err => {
-      console.error(err);
-    });
-
   let headless = true;
   // headless = false;
   puppeteer.launch({ headless: headless }).then(async browser => {
@@ -179,8 +168,9 @@ const csv = require('fast-csv');
 
     let configs = [
       {
-        namespace: 'Grab_Transport',
-        gmail_query: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride!',
+        namespace: 'MyCar',
+        gmail_query: 'subject:(Your MyCar Receipt)',
+        // gmail_query: 'subject:(Your MyCar Receipt) before:2020/1/1 after:2019/1/1',
         parser: async (page, html) => {
           // const dom = new JSDOM(html);
 
@@ -190,7 +180,44 @@ const csv = require('fast-csv');
 
           // console.log(elements);
 
+          //   const results = await page.$$eval('td.produceTdLast', elements => elements.map(element => element.innerHTML));
+          const results = await page.$$eval('tr', elements => elements.map(element => element.textContent));
+          // const result = await page.$eval('td', element => element.textContent);
+
+          let total = null;
+          results.reverse().some(result => {
+            if (result.includes('TOTAL')) {
+              //   console.log('result', result);
+              let matches = result.match(/[0-9]+\.[0-9]{1,2}/);
+              total = matches[0];
+              return true;
+            }
+          });
+
+          let metadata = {};
+          return { total, metadata };
+        },
+      },
+      {
+        namespace: 'Grab_Transport',
+        gmail_query: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride!',
+        // gmail_query: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/1/1',
+        parser: async (page, html) => {
+          // const dom = new JSDOM(html);
+
+          // var elements = dom.window.document.querySelectorAll('td.produceTdLast')
+          // var element = dom.window.document.querySelector('td.produceTdLast');
+          // const result = element.textContent;
+
+          // console.log(elements);
+
+          /* await page.evaluate(() => {
+                        var elements = document.querySelectorAll('td.produceTdLast');
+                        console.log(elements);
+                      }); */
+
           // const results = await page.$$eval('td.produceTdLast', elements => elements.map(element => element.innerHTML));
+          // const results = await page.$$eval('td.produceTdLast', elements => elements.map(element => element.textContent));
           const result = await page.$eval('td.produceTdLast', element => element.textContent);
 
           let matches = result.match(/[0-9]+\.[0-9]{1,2}/);
@@ -202,122 +229,116 @@ const csv = require('fast-csv');
       },
     ];
 
-    let config = configs[0];
-
     let promises = [];
-    promises.push(
-      list('messages', {
-        userId: 'me',
-        //   q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/10/1',
-        // q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/1/1',
-        // q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride!',
-        q: config.gmail_query,
-      }).then(messages => {
-        let namespace = config.namespace;
 
-        var dir = `extracted/${namespace}`;
+    configs.forEach(config => {
+      promises.push(
+        list('messages', {
+          userId: 'me',
+          //   q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/10/1',
+          // q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/1/1',
+          // q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride!',
+          q: config.gmail_query,
+        }).then(messages => {
+          let namespace = config.namespace;
 
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir);
-        }
-        console.log(namespace, messages.length);
+          var dir = `extracted/${namespace}`;
 
-        const promises = [];
+          if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir);
+          }
+          console.log(namespace, messages.length);
 
-        messages.forEach(message => {
-          let promise = get('messages', {
-            userId: 'me',
-            id: message['id'],
-            format: 'full',
-          }).then(data => {
-            // console.log(data);
+          const promises = [];
 
-            let payload = data.payload;
-            let headers = payload.headers;
-            let parts = payload.parts;
+          messages.forEach(message => {
+            let promise = get('messages', {
+              userId: 'me',
+              id: message['id'],
+              format: 'full',
+            }).then(data => {
+              let payload = data.payload;
+              let headers = payload.headers;
+              let parts = payload.parts;
 
-            let date_header = _.find(headers, { name: 'Date' });
-            let date_str = date_header['value'];
+              let date_header = _.find(headers, { name: 'Date' });
+              let date_str = date_header['value'];
 
-            //   console.log('date', date_str);
+              let date_moment = moment(date_str);
 
-            //   console.log(headers)
-            //   console.log(parts);
+              // console.log(data);
+              //   console.log(payload);
+              //   console.log(headers)
+              //   console.log(parts);
 
-            ////// TRY TO EXTRACT HTML
-            let base64_html_array = [];
+              ////// TRY TO EXTRACT HTML
+              let base64_html_array = [];
 
-            if (payload.mimeType == 'text/html') {
-              base64_html_array.push(payload.body.data);
-            }
+              if (payload.mimeType == 'text/html') {
+                base64_html_array.push(payload.body.data);
+              }
 
-            if (parts) {
-              parts.forEach(part => {
-                // console.log(part);
+              if (parts) {
+                parts.forEach(part => {
+                  // console.log(part);
 
-                if (part.mimeType == 'text/html') {
-                  base64_html_array.push(part.body.data);
-                } else if (part.mimeType == 'multipart/alternative') {
-                  part.parts.forEach(part => {
-                    if (part.mimeType == 'text/html') {
-                      base64_html_array.push(part.body.data);
-                    }
-                  });
-                }
-              });
-            }
-
-            //   console.log(date_str, message['id'], base64_html_array.length);
-            let promises = [];
-
-            ////// CONVERT HTML to PDFs
-            base64_html_array.forEach(base64_html => {
-              var html = Buffer.from(base64_html, 'base64').toString('ascii');
-
-              promises.push(
-                browser.newPage().then(async page => {
-                  await page.setContent(html);
-
-                  let parser_result = await config.parser(page, html);
-
-                  let date_moment = moment(date_str);
-
-                  let output = {
-                    namespace: namespace,
-                    date: date_moment.format('YYYY-MM-DD HH:mm:ss'),
-                    total: parser_result.total,
-                    metadata: JSON.stringify(parser_result.metadata),
-                  };
-                  console.log(output);
-
-                  csvStream.write(output);
-
-                  /* await page.evaluate(() => {
-                          var elements = document.querySelectorAll('td.produceTdLast');
-                          console.log(elements);
-                        }); */
-
-                  if (headless) {
-                    await page.pdf({
-                      // path: `extracted/${message["id"]}.pdf`,
-                      path: `extracted/${namespace}/${date_moment.format('YYYYMMDD_HHmmss')}-${parser_result.total}.pdf`,
-                      format: 'A4',
+                  if (part.mimeType == 'text/html') {
+                    base64_html_array.push(part.body.data);
+                  } else if (part.mimeType == 'multipart/alternative' || part.mimeType == 'multipart/related') {
+                    part.parts.forEach(part => {
+                      if (part.mimeType == 'text/html') {
+                        base64_html_array.push(part.body.data);
+                      }
                     });
-                    await page.close();
                   }
-                })
-              );
+                });
+              }
+
+              //   console.log(date_moment.format('YYYYMMDD_HHmmss'), message['id'], base64_html_array.length);
+              let promises = [];
+
+              ////// CONVERT HTML to PDFs
+              base64_html_array.forEach(base64_html => {
+                var html = Buffer.from(base64_html, 'base64').toString('ascii');
+
+                promises.push(
+                  browser.newPage().then(async page => {
+                    await page.setContent(html);
+
+                    let parser_result = await config.parser(page, html);
+
+                    let output = {
+                      namespace: namespace,
+                      date: date_moment.format('YYYY-MM-DD HH:mm:ss'),
+                      total: parser_result.total,
+                      metadata: JSON.stringify(parser_result.metadata),
+                    };
+                    console.log(output);
+
+                    csvStream.write(output);
+
+                    if (headless) {
+                      await page.pdf({
+                        // path: `extracted/${message["id"]}.pdf`,
+                        path: `extracted/${namespace}/${date_moment.format('YYYYMMDD_HHmmss')}-${parser_result.total}.pdf`,
+                        format: 'A4',
+                      });
+                      await page.close();
+                    }
+                  })
+                );
+              });
+
+              return Promise.all(promises);
             });
 
-            return Promise.all(promises);
+            promises.push(promise);
           });
 
-          promises.push(promise);
-        });
-
-        return Promise.all(promises);
-      })
-    );
+          return Promise.all(promises);
+        })
+      );
+    });
 
     await Promise.all(promises);
 
