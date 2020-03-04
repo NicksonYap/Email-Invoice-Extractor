@@ -8,6 +8,9 @@ import _ from 'lodash';
 import moment from 'moment';
 import { JSDOM } from 'jsdom';
 const csv = require('fast-csv');
+import pLimit from 'p-limit';
+
+const MAX_CONCURRENT_PAGES = 150;
 
 (async () => {
   function getGoogleToken() {
@@ -159,8 +162,10 @@ const csv = require('fast-csv');
   puppeteer.launch({ headless: headless }).then(async browser => {
     //ref: https://github.com/puppeteer/puppeteer/issues/471#issuecomment-324086023
 
+    const limit = pLimit(MAX_CONCURRENT_PAGES);
+
     console.time('Extraction');
-    
+
     let configs = [
       {
         namespace: 'MyCar',
@@ -226,7 +231,7 @@ const csv = require('fast-csv');
       },
       {
         namespace: 'GrabFood',
-        skip: true,
+        // skip: true,
         gmail_query: 'subject:(Your Grab E-Receipt) Hope you enjoyed your food!',
         // gmail_query: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/1/1',
         parser: async (page, html) => {
@@ -256,7 +261,7 @@ const csv = require('fast-csv');
       },
       {
         namespace: 'GrabFood',
-        skip: true,
+        // skip: true,
         gmail_query: 'from:GrabFood subject:(Order Confirmation for) Your order from',
         parser: async (page, html) => {
           // const dom = new JSDOM(html);
@@ -295,7 +300,7 @@ const csv = require('fast-csv');
       },
       {
         namespace: 'Foodpanda',
-        skip: true,
+        // skip: true,
         gmail_query: 'subject:(Your foodpanda order) Invoice',
         parser: async (page, html) => {
           // const dom = new JSDOM(html);
@@ -327,7 +332,7 @@ const csv = require('fast-csv');
     ];
 
     let promises = [];
-    let csvStreams = [];
+    let csvStreams = {};
 
     configs.forEach(config => {
       if (config.skip) {
@@ -350,11 +355,17 @@ const csv = require('fast-csv');
           }
           console.log(namespace, messages.length);
 
-          const csvStream = csv.format({ headers: true });
-          csvStream.pipe(fs.createWriteStream(`${dir}/_${namespace}.csv`));
-          csvStreams.push(csvStream)
+          let csv_file_path = `${dir}/_${namespace}.csv`;
 
-          
+          let csvStream = null;
+          if (csvStreams[csv_file_path]) { //re-use csvStream if same filename
+            csvStream = csvStreams[csv_file_path];
+          } else {
+            csvStream = csv.format({ headers: true });
+            csvStream.pipe(fs.createWriteStream(csv_file_path));
+            csvStreams[csv_file_path] = csvStream;
+          }
+
           const promises = [];
 
           messages.forEach(message => {
@@ -407,8 +418,8 @@ const csv = require('fast-csv');
               base64_html_array.forEach(base64_html => {
                 var html = Buffer.from(base64_html, 'base64').toString('ascii');
 
-                promises.push(
-                  browser.newPage().then(async page => {
+                let promise = limit(() => {
+                  return browser.newPage().then(async page => {
                     await page.setContent(html);
 
                     let parser_result = await config.parser(page, html);
@@ -431,8 +442,9 @@ const csv = require('fast-csv');
                       });
                       await page.close();
                     }
-                  })
-                );
+                  });
+                });
+                promises.push(promise);
               });
 
               return Promise.all(promises);
@@ -450,9 +462,10 @@ const csv = require('fast-csv');
 
     console.timeEnd('Extraction');
 
-    csvStreams.forEach(csvStream =>{
-        csvStream.end();
-    })
+    for (let csv_file_path in csvStreams) {
+      let csvStream = csvStreams[csv_file_path];
+      csvStream.end();
+    }
     if (headless) {
       browser.close();
     }
