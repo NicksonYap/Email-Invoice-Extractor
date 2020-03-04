@@ -169,6 +169,7 @@ const csv = require('fast-csv');
     let configs = [
       {
         namespace: 'MyCar',
+        // skip: true,
         gmail_query: 'subject:(Your MyCar Receipt)',
         // gmail_query: 'subject:(Your MyCar Receipt) before:2020/1/1 after:2019/1/1',
         parser: async (page, html) => {
@@ -200,6 +201,7 @@ const csv = require('fast-csv');
       },
       {
         namespace: 'Grab_Transport',
+        // skip: true,
         gmail_query: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride!',
         // gmail_query: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/1/1',
         parser: async (page, html) => {
@@ -227,11 +229,114 @@ const csv = require('fast-csv');
           return { total, metadata };
         },
       },
+      {
+        namespace: 'GrabFood',
+        // skip: true,
+        gmail_query: 'subject:(Your Grab E-Receipt) Hope you enjoyed your food!',
+        // gmail_query: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/1/1',
+        parser: async (page, html) => {
+          // const dom = new JSDOM(html);
+
+          // var elements = dom.window.document.querySelectorAll('td.produceTdLast')
+          // var element = dom.window.document.querySelector('td.produceTdLast');
+          // const result = element.textContent;
+
+          // console.log(elements);
+
+          /* await page.evaluate(() => {
+                        var elements = document.querySelectorAll('td.produceTdLast');
+                        console.log(elements);
+                      }); */
+
+          // const results = await page.$$eval('td.produceTdLast', elements => elements.map(element => element.innerHTML));
+          // const results = await page.$$eval('td.produceTdLast', elements => elements.map(element => element.textContent));
+          const result = await page.$eval('td.produceTdLast', element => element.textContent);
+
+          let matches = result.match(/[0-9]+\.[0-9]{1,2}/);
+
+          let total = matches[0];
+          let metadata = {};
+          return { total, metadata };
+        },
+      },
+      {
+        namespace: 'GrabFood',
+        // skip: true,
+        gmail_query: 'from:GrabFood subject:(Order Confirmation for) Your order from',
+        parser: async (page, html) => {
+          // const dom = new JSDOM(html);
+
+          // var elements = dom.window.document.querySelectorAll('td.produceTdLast')
+          // var element = dom.window.document.querySelector('td.produceTdLast');
+          // const result = element.textContent;
+
+          // console.log(elements);
+
+          //   const results = await page.$$eval('td.produceTdLast', elements => elements.map(element => element.innerHTML));
+          const results = await page.$$eval('td > div', elements => elements.map(element => element.textContent));
+          // const result = await page.$eval('td', element => element.textContent);
+
+          let total = null;
+          results.reverse().some(result => {
+            if (result.includes('Total')) {
+              //   console.log('result', result);
+              let matches = result.match(/[0-9]+\.[0-9]{1,2}/);
+              total = matches[0];
+              return true;
+            }
+          });
+
+          if (!total) {
+            const result = await page.$eval('h2', element => element.textContent);
+            if (result.includes('Paid with')) {
+              let matches = result.match(/[0-9]+\.[0-9]{1,2}/);
+              total = matches[0];
+            }
+          }
+
+          let metadata = {};
+          return { total, metadata };
+        },
+      },
+      {
+        namespace: 'Foodpanda',
+        // skip: true,
+        gmail_query: 'subject:(Your foodpanda order) Invoice',
+        parser: async (page, html) => {
+          // const dom = new JSDOM(html);
+
+          // var elements = dom.window.document.querySelectorAll('td.produceTdLast')
+          // var element = dom.window.document.querySelector('td.produceTdLast');
+          // const result = element.textContent;
+
+          // console.log(elements);
+
+          //   const results = await page.$$eval('td.produceTdLast', elements => elements.map(element => element.innerHTML));
+          const results = await page.$$eval('tr', elements => elements.map(element => element.textContent));
+          // const result = await page.$eval('td', element => element.textContent);
+
+          let total = null;
+          results.reverse().some(result => {
+            if (result.includes('Total')) {
+              //   console.log('result', result);
+              let matches = result.match(/[0-9]+\.[0-9]{1,2}/);
+              total = matches[0];
+              return true;
+            }
+          });
+
+          let metadata = {};
+          return { total, metadata };
+        },
+      },
     ];
 
     let promises = [];
 
     configs.forEach(config => {
+      if (config.skip) {
+        return;
+      }
       promises.push(
         list('messages', {
           userId: 'me',
@@ -320,7 +425,7 @@ const csv = require('fast-csv');
                     if (headless) {
                       await page.pdf({
                         // path: `extracted/${message["id"]}.pdf`,
-                        path: `extracted/${namespace}/${date_moment.format('YYYYMMDD_HHmmss')}-${parser_result.total}.pdf`,
+                        path: `extracted/${namespace}/${date_moment.format('YYYYMMDD_HHmmss')}-${parser_result.total || 'NA'}.pdf`,
                         format: 'A4',
                       });
                       await page.close();
