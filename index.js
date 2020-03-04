@@ -7,6 +7,7 @@ import puppeteer from 'puppeteer';
 import _ from 'lodash';
 import moment from 'moment';
 import { JSDOM } from 'jsdom';
+const csv = require('fast-csv');
 
 function getGoogleToken() {
   return new Promise(function(resolve, reject) {
@@ -179,6 +180,12 @@ getGoogleToken()
           //ref: https://github.com/puppeteer/puppeteer/issues/471#issuecomment-324086023
           const promises = [];
 
+          const csvStream = csv.format({ headers: true });
+
+          csvStream.pipe(fs.createWriteStream('extracted/extracted.csv')).on('end', () => {
+            console.log('csv exported');
+          });
+
           console.time('someFunction');
 
           messages.forEach(message => {
@@ -193,16 +200,9 @@ getGoogleToken()
               let headers = payload.headers;
               let parts = payload.parts;
 
-              let date_str = null;
               let date_header = _.find(headers, { name: 'Date' });
-
-              if (date_header) {
-                /* date_str = moment(date_header["value"]).format(
-                    "YYYY-MM-DD HH:mm:ss"
-                  ); */
-                // date_str = moment(date_header['value']).format('YYYY-MM-DD HH:mm:ss');
-                date_str = moment(date_header['value']).format('YYYYMMDD_HHmmss');
-              }
+              let date_str = date_header['value']
+              
               //   console.log('date', date_str);
 
               //   console.log(headers)
@@ -231,7 +231,7 @@ getGoogleToken()
                 });
               }
 
-            //   console.log(date_str, message['id'], base64_html_array.length);
+              //   console.log(date_str, message['id'], base64_html_array.length);
               let promises = [];
 
               //CONVERT HTML to PDFs
@@ -260,7 +260,17 @@ getGoogleToken()
                     const result = await page.$eval('td.produceTdLast', element => element.textContent);
 
                     let matches = result.match(/[0-9]+\.[0-9]{1,2}/);
-                    console.log(date_str, matches[0]);
+
+
+                    let date_moment = moment(date_str)
+                    let total = matches[0];
+                    let output = {
+                      date: date_moment.format('YYYY-MM-DD HH:mm:ss'),
+                      total: total,
+                    };
+                    console.log(output);
+
+                    csvStream.write(output);
 
                     /* await page.evaluate(() => {
                       var elements = document.querySelectorAll('td.produceTdLast');
@@ -270,7 +280,7 @@ getGoogleToken()
                     if (headless) {
                       await page.pdf({
                         // path: `extracted/${message["id"]}.pdf`,
-                        path: `extracted/${date_str}.pdf`,
+                        path: `extracted/${date_moment.format('YYYYMMDD_HHmmss')}-${total}.pdf`,
                         format: 'A4',
                       });
                       await page.close();
@@ -286,6 +296,8 @@ getGoogleToken()
           });
 
           await Promise.all(promises);
+
+          csvStream.end();
           if (headless) {
             browser.close();
           }
