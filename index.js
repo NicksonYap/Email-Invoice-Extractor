@@ -12,7 +12,7 @@ function getGoogleToken() {
     // do a thing, possibly async, then…
     //ref: https://developers.google.com/gmail/api/quickstart/nodejs
     //ref: https://developers.google.com/gmail/api/v1/reference/users/messages/list
-    //ref:: https://medium.com/@nickroach_50526/sending-emails-with-node-js-using-smtp-gmail-and-oauth2-316fe9c790a1
+    //ref: https://medium.com/@nickroach_50526/sending-emails-with-node-js-using-smtp-gmail-and-oauth2-316fe9c790a1
 
     // If modifying these scopes, delete token.json.
     const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
