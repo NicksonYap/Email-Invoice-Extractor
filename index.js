@@ -6,6 +6,7 @@ import readline from 'readline';
 import puppeteer from 'puppeteer';
 import _ from 'lodash';
 import moment from 'moment';
+import { JSDOM } from 'jsdom';
 
 function getGoogleToken() {
   return new Promise(function(resolve, reject) {
@@ -165,15 +166,20 @@ getGoogleToken()
 
     list('messages', {
       userId: 'me',
-      //   q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/1/1',
+      //   q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/10/1',
+      // q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/1/1',
       q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride!',
     })
       .then(messages => {
         console.log(messages.length);
 
-        puppeteer.launch().then(async browser => {
+        let headless = true;
+        // headless = false;
+        puppeteer.launch({ headless: headless }).then(async browser => {
           //ref: https://github.com/puppeteer/puppeteer/issues/471#issuecomment-324086023
           const promises = [];
+
+          console.time('someFunction');
 
           messages.forEach(message => {
             let promise = get('messages', {
@@ -225,22 +231,50 @@ getGoogleToken()
                 });
               }
 
-              console.log(date_str, message['id'], base64_html_array.length);
+            //   console.log(date_str, message['id'], base64_html_array.length);
               let promises = [];
 
               //CONVERT HTML to PDFs
               base64_html_array.forEach(base64_html => {
                 var html = Buffer.from(base64_html, 'base64').toString('ascii');
 
+                const dom = new JSDOM(html);
+
+                // var elements = dom.window.document.querySelectorAll('td.produceTdLast')
+                // var element = dom.window.document.querySelector('td.produceTdLast');
+                // const result = element.textContent;
+
+                // console.log(elements);
+
                 promises.push(
                   browser.newPage().then(async page => {
                     await page.setContent(html);
-                    await page.pdf({
-                      // path: `extracted/${message["id"]}.pdf`,
-                      path: `extracted/${date_str}.pdf`,
-                      format: 'A4',
-                    });
-                    await page.close();
+
+                    page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+
+                    //extract price
+                    // const results = await page.$$eval('td.produceTdLast', elements => elements.map(element => element.innerHTML));
+                    // const results = await page.$$eval('td.produceTdLast', elements => elements.map(element => element.textContent));
+                    // console.log(results);
+
+                    const result = await page.$eval('td.produceTdLast', element => element.textContent);
+
+                    let matches = result.match(/[0-9]+\.[0-9]{1,2}/);
+                    console.log(date_str, matches[0]);
+
+                    /* await page.evaluate(() => {
+                      var elements = document.querySelectorAll('td.produceTdLast');
+                      console.log(elements);
+                    }); */
+
+                    if (headless) {
+                      await page.pdf({
+                        // path: `extracted/${message["id"]}.pdf`,
+                        path: `extracted/${date_str}.pdf`,
+                        format: 'A4',
+                      });
+                      await page.close();
+                    }
                   })
                 );
               });
@@ -252,7 +286,11 @@ getGoogleToken()
           });
 
           await Promise.all(promises);
-          browser.close();
+          if (headless) {
+            browser.close();
+          }
+
+          console.timeEnd('someFunction');
         });
       })
       .catch(err => {

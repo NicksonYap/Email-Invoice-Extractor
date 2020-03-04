@@ -21,6 +21,7 @@
     "emailjs-imap-client": "^3.1.0",
     "esm": "^3.2.25",
     "googleapis": "^47.0.0",
+    "jsdom": "^16.2.0",
     "lodash": "^4.17.15",
     "moment": "^2.24.0",
     "open": "^7.0.2",
