@@ -160,12 +160,7 @@ const csv = require('fast-csv');
     //ref: https://github.com/puppeteer/puppeteer/issues/471#issuecomment-324086023
 
     console.time('Extraction');
-    const csvStream = csv.format({ headers: true });
-
-    csvStream.pipe(fs.createWriteStream('extracted/extracted.csv')).on('end', () => {
-      console.log('csv exported');
-    });
-
+    
     let configs = [
       {
         namespace: 'MyCar',
@@ -231,7 +226,7 @@ const csv = require('fast-csv');
       },
       {
         namespace: 'GrabFood',
-        // skip: true,
+        skip: true,
         gmail_query: 'subject:(Your Grab E-Receipt) Hope you enjoyed your food!',
         // gmail_query: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/1/1',
         parser: async (page, html) => {
@@ -261,7 +256,7 @@ const csv = require('fast-csv');
       },
       {
         namespace: 'GrabFood',
-        // skip: true,
+        skip: true,
         gmail_query: 'from:GrabFood subject:(Order Confirmation for) Your order from',
         parser: async (page, html) => {
           // const dom = new JSDOM(html);
@@ -300,7 +295,7 @@ const csv = require('fast-csv');
       },
       {
         namespace: 'Foodpanda',
-        // skip: true,
+        skip: true,
         gmail_query: 'subject:(Your foodpanda order) Invoice',
         parser: async (page, html) => {
           // const dom = new JSDOM(html);
@@ -332,6 +327,7 @@ const csv = require('fast-csv');
     ];
 
     let promises = [];
+    let csvStreams = [];
 
     configs.forEach(config => {
       if (config.skip) {
@@ -354,6 +350,11 @@ const csv = require('fast-csv');
           }
           console.log(namespace, messages.length);
 
+          const csvStream = csv.format({ headers: true });
+          csvStream.pipe(fs.createWriteStream(`${dir}/_${namespace}.csv`));
+          csvStreams.push(csvStream)
+
+          
           const promises = [];
 
           messages.forEach(message => {
@@ -449,7 +450,9 @@ const csv = require('fast-csv');
 
     console.timeEnd('Extraction');
 
-    csvStream.end();
+    csvStreams.forEach(csvStream =>{
+        csvStream.end();
+    })
     if (headless) {
       browser.close();
     }
