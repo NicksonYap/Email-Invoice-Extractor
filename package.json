@@ -4,7 +4,8 @@
   "description": "Extracts Invoices and Receipts from email inbox",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node -r esm index.js"
   },
   "repository": {
     "type": "git",
@@ -15,5 +16,9 @@
   "bugs": {
     "url": "https://github.com/NicksonYap/Email-Invoice-Extractor/issues"
   },
-  "homepage": "https://github.com/NicksonYap/Email-Invoice-Extractor#readme"
+  "homepage": "https://github.com/NicksonYap/Email-Invoice-Extractor#readme",
+  "dependencies": {
+    "emailjs-imap-client": "^3.1.0",
+    "esm": "^3.2.25"
+  }
 }
