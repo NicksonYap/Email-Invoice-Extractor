@@ -165,28 +165,64 @@ const csv = require('fast-csv');
       console.error(err);
     });
 
-  list('messages', {
-    userId: 'me',
-    //   q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/10/1',
-    // q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/1/1',
-    q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride!',
-  })
-    .then(messages => {
-      console.log(messages.length);
+  let headless = true;
+  // headless = false;
+  puppeteer.launch({ headless: headless }).then(async browser => {
+    //ref: https://github.com/puppeteer/puppeteer/issues/471#issuecomment-324086023
 
-      let headless = true;
-      // headless = false;
-      puppeteer.launch({ headless: headless }).then(async browser => {
-        //ref: https://github.com/puppeteer/puppeteer/issues/471#issuecomment-324086023
+    console.time('Extraction');
+    const csvStream = csv.format({ headers: true });
+
+    csvStream.pipe(fs.createWriteStream('extracted/extracted.csv')).on('end', () => {
+      console.log('csv exported');
+    });
+
+    let configs = [
+      {
+        namespace: 'Grab_Transport',
+        gmail_query: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride!',
+        parser: async (page, html) => {
+          // const dom = new JSDOM(html);
+
+          // var elements = dom.window.document.querySelectorAll('td.produceTdLast')
+          // var element = dom.window.document.querySelector('td.produceTdLast');
+          // const result = element.textContent;
+
+          // console.log(elements);
+
+          // const results = await page.$$eval('td.produceTdLast', elements => elements.map(element => element.innerHTML));
+          const result = await page.$eval('td.produceTdLast', element => element.textContent);
+
+          let matches = result.match(/[0-9]+\.[0-9]{1,2}/);
+
+          let total = matches[0];
+          let metadata = {};
+          return { total, metadata };
+        },
+      },
+    ];
+
+    let config = configs[0];
+
+    let promises = [];
+    promises.push(
+      list('messages', {
+        userId: 'me',
+        //   q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/10/1',
+        // q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride! before:2020/1/1 after:2019/1/1',
+        // q: 'subject:(Your Grab E-Receipt) Hope you had an enjoyable ride!',
+        q: config.gmail_query,
+      }).then(messages => {
+        let namespace = config.namespace;
+
+        var dir = `extracted/${namespace}`;
+
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir);
+        }
+        console.log(namespace, messages.length);
+
         const promises = [];
-
-        const csvStream = csv.format({ headers: true });
-
-        csvStream.pipe(fs.createWriteStream('extracted/extracted.csv')).on('end', () => {
-          console.log('csv exported');
-        });
-
-        console.time('someFunction');
 
         messages.forEach(message => {
           let promise = get('messages', {
@@ -208,7 +244,7 @@ const csv = require('fast-csv');
             //   console.log(headers)
             //   console.log(parts);
 
-            //TRY TO EXTRACT HTML
+            ////// TRY TO EXTRACT HTML
             let base64_html_array = [];
 
             if (payload.mimeType == 'text/html') {
@@ -234,38 +270,23 @@ const csv = require('fast-csv');
             //   console.log(date_str, message['id'], base64_html_array.length);
             let promises = [];
 
-            //CONVERT HTML to PDFs
+            ////// CONVERT HTML to PDFs
             base64_html_array.forEach(base64_html => {
               var html = Buffer.from(base64_html, 'base64').toString('ascii');
-
-              const dom = new JSDOM(html);
-
-              // var elements = dom.window.document.querySelectorAll('td.produceTdLast')
-              // var element = dom.window.document.querySelector('td.produceTdLast');
-              // const result = element.textContent;
-
-              // console.log(elements);
 
               promises.push(
                 browser.newPage().then(async page => {
                   await page.setContent(html);
 
-                  page.on('console', msg => console.log('PAGE LOG:', msg.text()));
-
-                  //extract price
-                  // const results = await page.$$eval('td.produceTdLast', elements => elements.map(element => element.innerHTML));
-                  // const results = await page.$$eval('td.produceTdLast', elements => elements.map(element => element.textContent));
-                  // console.log(results);
-
-                  const result = await page.$eval('td.produceTdLast', element => element.textContent);
-
-                  let matches = result.match(/[0-9]+\.[0-9]{1,2}/);
+                  let parser_result = await config.parser(page, html);
 
                   let date_moment = moment(date_str);
-                  let total = matches[0];
+
                   let output = {
+                    namespace: namespace,
                     date: date_moment.format('YYYY-MM-DD HH:mm:ss'),
-                    total: total,
+                    total: parser_result.total,
+                    metadata: JSON.stringify(parser_result.metadata),
                   };
                   console.log(output);
 
@@ -279,7 +300,7 @@ const csv = require('fast-csv');
                   if (headless) {
                     await page.pdf({
                       // path: `extracted/${message["id"]}.pdf`,
-                      path: `extracted/${date_moment.format('YYYYMMDD_HHmmss')}-${total}.pdf`,
+                      path: `extracted/${namespace}/${date_moment.format('YYYYMMDD_HHmmss')}-${parser_result.total}.pdf`,
                       format: 'A4',
                     });
                     await page.close();
@@ -294,19 +315,19 @@ const csv = require('fast-csv');
           promises.push(promise);
         });
 
-        await Promise.all(promises);
+        return Promise.all(promises);
+      })
+    );
 
-        csvStream.end();
-        if (headless) {
-          browser.close();
-        }
+    await Promise.all(promises);
 
-        console.timeEnd('someFunction');
-      });
-    })
-    .catch(err => {
-      console.error(err);
-    });
+    console.timeEnd('Extraction');
+
+    csvStream.end();
+    if (headless) {
+      browser.close();
+    }
+  });
 })();
 
 /* 
